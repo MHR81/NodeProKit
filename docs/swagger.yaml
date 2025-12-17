@@ -1,0 +1,1647 @@
+openapi: 3.0.0
+info:
+  title: ReactViteProKit API
+  description: >
+    Full-featured backend API built with Node.js, Express, MongoDB, Cloudinary.  
+    Modular MVC design with Auth, User, Admin, Product, File, OTP modules.
+    All responses follow a standard format with success status, data, and message fields.
+  version: 1.0.0
+  contact:
+    name: API Support
+  license:
+    name: MIT
+servers:
+  - url: http://localhost:5000/api
+    description: 
+  - url: https://example.com/api
+    description: 
+
+tags:
+  - name: Health
+    description: API health check
+  - name: File
+    description: File upload and management through Cloudinary
+  - name: Auth
+    description: Authentication and user registration/login endpoints
+  - name: User
+    description: User profile management and user listing (admin only)
+  # - name: Product
+  #   description: Product catalog management and retrieval
+
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token required for authenticated endpoints
+
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Check API health status
+      description: Returns a simple response to verify the API is running
+      operationId: getHealth
+      responses:
+        "200":
+          description: API is running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "API is running"
+
+  /auth/register:
+    post:
+      tags:
+        - Auth
+      summary: Request OTP for registration
+      description: >
+        Starts the registration process. Takes email, phone, and password in this step.
+        Sends an OTP code to the provided phone number.
+        User must then call /auth/verify-otp with phone and OTP code only to complete registration.
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - phone
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: User email (optional)
+                  example: "user@example.com"
+                phone:
+                  type: string
+                  description: User phone number
+                  example: "+989123456789"
+                password:
+                  type: string
+                  format: password
+                  description: User password
+                  example: "SecurePassword123!"
+                role:
+                  type: string
+                  enum: [user, admin]
+                  description: User role (defaults to 'user')
+                  example: "user"
+      responses:
+        "200":
+          description: OTP sent successfully. Call /auth/verify-otp with phone and code only to complete registration.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      phone:
+                        type: string
+                        example: "+989123456789"
+                  message:
+                    type: string
+                    example: "OTP sent successfully"
+        "400":
+          description: Invalid input or user already exists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+        "429":
+          description: Too many OTP requests, rate limited
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+
+  /auth/verify-otp:
+    post:
+      tags:
+        - Auth
+      summary: Verify OTP and complete registration
+      description: >
+        Verifies the OTP code and completes user registration.
+        Only requires phone and OTP code - all other data (email, password) 
+        was sent in the initial registration request.
+      operationId: verifyOtp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - phone
+                - code
+              properties:
+                phone:
+                  type: string
+                  description: Phone number
+                  example: "+989123456789"
+                code:
+                  type: string
+                  description: OTP code sent to phone
+                  example: "123456"
+      responses:
+        "201":
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        example: "507f1f77bcf86cd799439011"
+                  message:
+                    type: string
+                    example: "Registered successfully"
+        "400":
+          description: Invalid or expired OTP, too many attempts, or user already exists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+        "429":
+          description: Too many incorrect OTP attempts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Login user
+      description: >
+        Authenticates user with email or phone and password.
+        Returns JWT access and refresh tokens.
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: User email (alternative to phone)
+                  example: "user@example.com"
+                phone:
+                  type: string
+                  description: User phone (alternative to email)
+                  example: "+989123456789"
+                password:
+                  type: string
+                  format: password
+                  description: User password
+                  example: "SecurePassword123!"
+              required:
+                - password
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      accessToken:
+                        type: string
+                        description: JWT access token
+                        example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                      refreshToken:
+                        type: string
+                        description: JWT refresh token
+                        example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  message:
+                    type: string
+                    example: "Login successful"
+        "400":
+          description: Missing required credentials
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+
+  /auth/forgot-password:
+    post:
+      tags:
+        - Auth
+      summary: Request OTP for password reset
+      description: >
+        Sends an OTP code to the user's phone number for password reset.
+        Rate limited to 3 requests per 5 minutes.
+        OTP expires in 2 minutes.
+      operationId: forgotPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - phone
+              properties:
+                phone:
+                  type: string
+                  description: User phone number
+                  example: "+989123456789"
+      responses:
+        "200":
+          description: OTP sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      phone:
+                        type: string
+                        example: "+989123456789"
+                  message:
+                    type: string
+                    example: "OTP sent successfully"
+        "400":
+          description: Phone required or user not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+        "429":
+          description: Too many OTP requests, rate limited
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+
+  /auth/reset-password:
+    post:
+      tags:
+        - Auth
+      summary: Reset password with OTP verification
+      description: >
+        Resets user password after verifying the OTP code.
+        Requires phone, OTP code, and new password.
+        Maximum 5 incorrect OTP attempts.
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - phone
+                - code
+                - newPassword
+              properties:
+                phone:
+                  type: string
+                  description: User phone number
+                  example: "+989123456789"
+                code:
+                  type: string
+                  description: OTP code sent to phone
+                  example: "123456"
+                newPassword:
+                  type: string
+                  format: password
+                  description: New password
+                  example: "NewPassword123!"
+      responses:
+        "200":
+          description: Password updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: "null"
+                  message:
+                    type: string
+                    example: "Password updated successfully"
+        "400":
+          description: Invalid OTP, expired OTP, or too many attempts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+        "404":
+          description: User or OTP not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+        "429":
+          description: Too many incorrect OTP attempts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+
+  /auth/logout:
+    post:
+      tags:
+        - Auth
+      summary: Logout user
+      description: Logs out the authenticated user
+      operationId: logout
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: "null"
+                  message:
+                    type: string
+                    example: "Logged out"
+        "401":
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+
+  /users/me:
+    get:
+      tags:
+        - User
+      summary: Get current user profile
+      description: Retrieves the authenticated user's profile information
+      operationId: getMyProfile
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User profile retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      _id:
+                        type: string
+                        description: User unique identifier
+                        example: "507f1f77bcf86cd799439011"
+                      email:
+                        type: string
+                        format: email
+                        description: User email address
+                        example: "user@example.com"
+                      phone:
+                        type: string
+                        description: User phone number
+                        example: "+989123456789"
+                      role:
+                        type: string
+                        enum: [user, admin]
+                        description: User role in the system
+                        example: "user"
+                      createdAt:
+                        type: string
+                        format: date-time
+                      updatedAt:
+                        type: string
+                        format: date-time
+                  message:
+                    type: string
+                    example: "Operation successful"
+        "401":
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+
+    put:
+      tags:
+        - User
+      summary: Update current user profile
+      description: Updates the authenticated user's email, phone, or password
+      operationId: editMyProfile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                  description: New email address
+                  example: "newemail@example.com"
+                phone:
+                  type: string
+                  description: New phone number
+                  example: "+989123456789"
+                password:
+                  type: string
+                  format: password
+                  description: New password
+                  example: "NewPassword123!"
+      responses:
+        "200":
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      _id:
+                        type: string
+                        description: User unique identifier
+                        example: "507f1f77bcf86cd799439011"
+                      email:
+                        type: string
+                        format: email
+                        description: User email address
+                        example: "user@example.com"
+                      phone:
+                        type: string
+                        description: User phone number
+                        example: "+989123456789"
+                      role:
+                        type: string
+                        enum: [user, admin]
+                        description: User role in the system
+                        example: "user"
+                      createdAt:
+                        type: string
+                        format: date-time
+                      updatedAt:
+                        type: string
+                        format: date-time
+                  message:
+                    type: string
+                    example: "Operation successful"
+        "401":
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+
+  /users:
+    get:
+      tags:
+        - User
+      summary: List all users (admin only)
+      description: >
+        Retrieves a list of all users in the system.
+        Admin only endpoint.
+      operationId: getAllUsers
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        _id:
+                          type: string
+                          description: User unique identifier
+                          example: "507f1f77bcf86cd799439011"
+                        email:
+                          type: string
+                          format: email
+                          description: User email address
+                          example: "user@example.com"
+                        phone:
+                          type: string
+                          description: User phone number
+                          example: "+989123456789"
+                        role:
+                          type: string
+                          enum: [user, admin]
+                          description: User role in the system
+                          example: "user"
+                        createdAt:
+                          type: string
+                          format: date-time
+                        updatedAt:
+                          type: string
+                          format: date-time
+                  message:
+                    type: string
+                    example: "Operation successful"
+        "401":
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+        "403":
+          description: Forbidden - Admin access required
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+
+  /users/{id}:
+    get:
+      tags:
+        - User
+      summary: Get user by ID (admin only)
+      description: >
+        Retrieves a specific user's profile by ID.
+        Admin only endpoint.
+      operationId: getUserById
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: User ID (MongoDB ObjectId)
+          example: "507f1f77bcf86cd799439011"
+      responses:
+        "200":
+          description: User profile retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      _id:
+                        type: string
+                        description: User unique identifier
+                        example: "507f1f77bcf86cd799439011"
+                      email:
+                        type: string
+                        format: email
+                        description: User email address
+                        example: "user@example.com"
+                      phone:
+                        type: string
+                        description: User phone number
+                        example: "+989123456789"
+                      role:
+                        type: string
+                        enum: [user, admin]
+                        description: User role in the system
+                        example: "user"
+                      createdAt:
+                        type: string
+                        format: date-time
+                      updatedAt:
+                        type: string
+                        format: date-time
+                  message:
+                    type: string
+                    example: "Operation successful"
+        "401":
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+        "403":
+          description: Forbidden - Admin access required
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+
+    put:
+      tags:
+        - User
+      summary: Update user by ID (admin only)
+      description: >
+        Updates a specific user's information by ID.
+        Admin only endpoint.
+      operationId: editUserByAdmin
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: User ID (MongoDB ObjectId)
+          example: "507f1f77bcf86cd799439011"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: "newemail@example.com"
+                phone:
+                  type: string
+                  example: "+989123456789"
+                password:
+                  type: string
+                  format: password
+                  example: "NewPassword123!"
+                role:
+                  type: string
+                  enum: [user, admin]
+                  example: "admin"
+      responses:
+        "200":
+          description: User updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      _id:
+                        type: string
+                        description: User unique identifier
+                        example: "507f1f77bcf86cd799439011"
+                      email:
+                        type: string
+                        format: email
+                        description: User email address
+                        example: "user@example.com"
+                      phone:
+                        type: string
+                        description: User phone number
+                        example: "+989123456789"
+                      role:
+                        type: string
+                        enum: [user, admin]
+                        description: User role in the system
+                        example: "user"
+                      createdAt:
+                        type: string
+                        format: date-time
+                      updatedAt:
+                        type: string
+                        format: date-time
+                  message:
+                    type: string
+                    example: "Operation successful"
+        "401":
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+        "403":
+          description: Forbidden - Admin access required
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+
+    delete:
+      tags:
+        - User
+      summary: Delete user by ID (admin only)
+      description: >
+        Deletes a specific user from the system.
+        Admin only endpoint.
+      operationId: deleteUserByAdmin
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: User ID (MongoDB ObjectId)
+          example: "507f1f77bcf86cd799439011"
+      responses:
+        "200":
+          description: User deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: "null"
+                  message:
+                    type: string
+                    example: "Operation successful"
+        "401":
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+        "403":
+          description: Forbidden - Admin access required
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+
+  /files:
+    post:
+      tags:
+        - File
+      summary: Upload file
+      description: >
+        Uploads a file to Cloudinary cloud storage.
+        Admin only endpoint.
+        File is uploaded to 'uploads' folder on Cloudinary.
+      operationId: uploadFile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File to upload
+      responses:
+        "201":
+          description: File uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      _id:
+                        type: string
+                        example: "507f1f77bcf86cd799439011"
+                      filename:
+                        type: string
+                        description: Original filename
+                        example: "document.pdf"
+                      url:
+                        type: string
+                        format: uri
+                        description: Cloudinary secure URL
+                        example: "https://res.cloudinary.com/example/image.jpg"
+                      publicId:
+                        type: string
+                        description: Cloudinary public ID for deletion
+                        example: "uploads/abc123xyz"
+                      uploadedBy:
+                        type: string
+                        description: User ID who uploaded the file
+                        example: "507f1f77bcf86cd799439011"
+                      createdAt:
+                        type: string
+                        format: date-time
+                      updatedAt:
+                        type: string
+                        format: date-time
+                  message:
+                    type: string
+                    example: "Operation successful"
+        "400":
+          description: No file provided
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+        "401":
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+        "403":
+          description: Forbidden - Admin access required
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+
+  /files/{id}:
+    get:
+      tags:
+        - File
+      summary: Get file by ID
+      description: >
+        Retrieves file information by ID.
+        Public endpoint - no authentication required.
+      operationId: getFileById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: File ID (MongoDB ObjectId)
+          example: "507f1f77bcf86cd799439011"
+      responses:
+        "200":
+          description: File information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      _id:
+                        type: string
+                        example: "507f1f77bcf86cd799439011"
+                      filename:
+                        type: string
+                        description: Original filename
+                        example: "document.pdf"
+                      url:
+                        type: string
+                        format: uri
+                        description: Cloudinary secure URL
+                        example: "https://res.cloudinary.com/example/image.jpg"
+                      publicId:
+                        type: string
+                        description: Cloudinary public ID for deletion
+                        example: "uploads/abc123xyz"
+                      uploadedBy:
+                        type: string
+                        description: User ID who uploaded the file
+                        example: "507f1f77bcf86cd799439011"
+                      createdAt:
+                        type: string
+                        format: date-time
+                      updatedAt:
+                        type: string
+                        format: date-time
+                  message:
+                    type: string
+                    example: "Operation successful"
+        "404":
+          description: File not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+
+    delete:
+      tags:
+        - File
+      summary: Delete file (admin only)
+      description: >
+        Deletes a file from Cloudinary and database.
+        Admin only endpoint.
+      operationId: deleteFileByAdmin
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: File ID (MongoDB ObjectId)
+          example: "507f1f77bcf86cd799439011"
+      responses:
+        "200":
+          description: File deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: "null"
+                  message:
+                    type: string
+                    example: "Operation successful"
+        "401":
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+        "403":
+          description: Forbidden - Admin access required
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+        "404":
+          description: File not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  error:
+                    type: string
+                    example: "Error message"
+                  message:
+                    type: string
+                    example: "Error details"
+
+ # /products:
+  #   get:
+  #     tags:
+  #       - Product
+  #     summary: Get all products
+  #     description: >
+  #       Retrieves a list of all products in the catalog.
+  #       Public endpoint - no authentication required.
+  #     operationId: getAllProducts
+  #     responses:
+  #       "200":
+  #         description: List of products
+  #         content:
+  #           application/json:
+  #             schema:
+  #               allOf:
+  #                 - $ref: "#/components/schemas/ApiResponse"
+  #                 - type: object
+  #                   properties:
+  #                     data:
+  #                       type: array
+  #                       items:
+  #                         $ref: "#/components/schemas/Product"
+
+  #   post:
+  #     tags:
+  #       - Product
+  #     summary: Create new product
+  #     description: >
+  #       Creates a new product.
+  #       Admin only endpoint.
+  #     operationId: addProduct
+  #     security:
+  #       - bearerAuth: []
+  #     requestBody:
+  #       required: true
+  #       content:
+  #         application/json:
+  #           schema:
+  #             type: object
+  #             required:
+  #               - name
+  #               - price
+  #             properties:
+  #               name:
+  #                 type: string
+  #                 description: Product name
+  #                 example: "Wireless Mouse"
+  #               description:
+  #                 type: string
+  #                 description: Product description
+  #                 example: "Ergonomic wireless mouse with 2.4GHz connection"
+  #               price:
+  #                 type: number
+  #                 format: float
+  #                 description: Product price
+  #                 example: 29.99
+  #               stock:
+  #                 type: integer
+  #                 description: Quantity in stock
+  #                 example: 50
+  #               imageUrl:
+  #                 type: string
+  #                 format: uri
+  #                 description: Product image URL
+  #                 example: "https://example.com/mouse.jpg"
+  #     responses:
+  #       "201":
+  #         description: Product created successfully
+  #         content:
+  #           application/json:
+  #             schema:
+  #               allOf:
+  #                 - $ref: "#/components/schemas/ApiResponse"
+  #                 - type: object
+  #                   properties:
+  #                     data:
+  #                       $ref: "#/components/schemas/Product"
+  #       "400":
+  #         description: Missing required fields (name and price)
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: "#/components/schemas/ErrorResponse"
+  #       "401":
+  #         description: Unauthorized - Invalid or missing token
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: "#/components/schemas/ErrorResponse"
+  #       "403":
+  #         description: Forbidden - Admin access required
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: "#/components/schemas/ErrorResponse"
+
+  # /products/{id}:
+  #   get:
+  #     tags:
+  #       - Product
+  #     summary: Get product by ID
+  #     description: >
+  #       Retrieves a specific product by its ID.
+  #       Public endpoint - no authentication required.
+  #     operationId: getProductById
+  #     parameters:
+  #       - name: id
+  #         in: path
+  #         required: true
+  #         schema:
+  #           type: string
+  #         description: Product ID (MongoDB ObjectId)
+  #         example: "507f1f77bcf86cd799439011"
+  #     responses:
+  #       "200":
+  #         description: Product details
+  #         content:
+  #           application/json:
+  #             schema:
+  #               allOf:
+  #                 - $ref: "#/components/schemas/ApiResponse"
+  #                 - type: object
+  #                   properties:
+  #                     data:
+  #                       $ref: "#/components/schemas/Product"
+  #       "404":
+  #         description: Product not found
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: "#/components/schemas/ErrorResponse"
+
+  #   put:
+  #     tags:
+  #       - Product
+  #     summary: Update product
+  #     description: >
+  #       Updates a product's information.
+  #       Admin only endpoint.
+  #     operationId: editProduct
+  #     security:
+  #       - bearerAuth: []
+  #     parameters:
+  #       - name: id
+  #         in: path
+  #         required: true
+  #         schema:
+  #           type: string
+  #         description: Product ID (MongoDB ObjectId)
+  #         example: "507f1f77bcf86cd799439011"
+  #     requestBody:
+  #       required: true
+  #       content:
+  #         application/json:
+  #           schema:
+  #             type: object
+  #             properties:
+  #               name:
+  #                 type: string
+  #                 example: "Updated Product Name"
+  #               description:
+  #                 type: string
+  #                 example: "Updated description"
+  #               price:
+  #                 type: number
+  #                 format: float
+  #                 example: 39.99
+  #               stock:
+  #                 type: integer
+  #                 example: 100
+  #               imageUrl:
+  #                 type: string
+  #                 format: uri
+  #                 example: "https://example.com/newimage.jpg"
+  #     responses:
+  #       "200":
+  #         description: Product updated successfully
+  #         content:
+  #           application/json:
+  #             schema:
+  #               allOf:
+  #                 - $ref: "#/components/schemas/ApiResponse"
+  #                 - type: object
+  #                   properties:
+  #                     data:
+  #                       $ref: "#/components/schemas/Product"
+  #       "401":
+  #         description: Unauthorized - Invalid or missing token
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: "#/components/schemas/ErrorResponse"
+  #       "403":
+  #         description: Forbidden - Admin access required
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: "#/components/schemas/ErrorResponse"
+  #       "404":
+  #         description: Product not found
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: "#/components/schemas/ErrorResponse"
+
+  #   delete:
+  #     tags:
+  #       - Product
+  #     summary: Delete product
+  #     description: >
+  #       Deletes a product from the catalog.
+  #       Admin only endpoint.
+  #     operationId: deleteProduct
+  #     security:
+  #       - bearerAuth: []
+  #     parameters:
+  #       - name: id
+  #         in: path
+  #         required: true
+  #         schema:
+  #           type: string
+  #         description: Product ID (MongoDB ObjectId)
+  #         example: "507f1f77bcf86cd799439011"
+  #     responses:
+  #       "200":
+  #         description: Product deleted successfully
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: "#/components/schemas/ApiResponse"
+  #       "401":
+  #         description: Unauthorized - Invalid or missing token
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: "#/components/schemas/ErrorResponse"
+  #       "403":
+  #         description: Forbidden - Admin access required
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: "#/components/schemas/ErrorResponse"
+  #       "404":
+  #         description: Product not found
+  #         content:
+  #           application/json:
+  #             schema:
+  #               $ref: "#/components/schemas/ErrorResponse"
