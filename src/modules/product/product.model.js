@@ -6,7 +6,12 @@ const productSchema = new mongoose.Schema(
         description: { type: String, default: "" },
         price: { type: Number, required: true },
         stock: { type: Number, default: 0 },
-        imageUrl: { type: String },
+        images: [
+            {
+                _id: { type: mongoose.Schema.Types.ObjectId, ref: "File" },
+                filePath: { type: String }
+            }
+        ],
         createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     },
     { timestamps: true }

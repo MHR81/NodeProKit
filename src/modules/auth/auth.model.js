@@ -22,6 +22,12 @@ const userSchema = new mongoose.Schema(
             enum: Object.values(ROLES),
             default: ROLES.USER,
         },
+        avatars: [
+            {
+                _id: { type: mongoose.Schema.Types.ObjectId, ref: "File" },
+                filePath: { type: String }
+            }
+        ],
     },
     { timestamps: true }
 );
